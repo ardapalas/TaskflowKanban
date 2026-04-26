@@ -35,19 +35,25 @@ export async function createCard(formData: FormData) {
     throw new Error(countError.message);
   }
 
-  const { error } = await supabase.from("cards").insert({
-    column_id: columnId,
-    title,
-    description: description || null,
-    position: count ?? 0,
-  });
+  const { data: card, error } = await supabase
+    .from("cards")
+    .insert({
+      column_id: columnId,
+      title,
+      description: description || null,
+      position: count ?? 0,
+    })
+    .select("id, title, description, position, column_id")
+    .single();
 
-  if (error) {
+  if (error || !card) {
     console.error("Create card error:", error);
-    throw new Error(error.message);
+    throw new Error(error?.message ?? "Card could not be created");
   }
 
   revalidatePath(`/board/${boardId}`);
+
+  return card;
 }
 
 export async function deleteCard(formData: FormData) {
@@ -68,14 +74,21 @@ export async function deleteCard(formData: FormData) {
     redirect("/login");
   }
 
-  const { error } = await supabase.from("cards").delete().eq("id", cardId);
+  const { data: deletedCard, error } = await supabase
+    .from("cards")
+    .delete()
+    .eq("id", cardId)
+    .select("id")
+    .single();
 
-  if (error) {
+  if (error || !deletedCard) {
     console.error("Delete card error:", error);
-    throw new Error(error.message);
+    throw new Error(error?.message ?? "Card could not be deleted");
   }
 
   revalidatePath(`/board/${boardId}`);
+
+  return deletedCard;
 }
 
 export async function updateCard(formData: FormData) {
@@ -178,4 +191,4 @@ export async function moveCard(input: MoveCardInput) {
   }
 
   revalidatePath(`/board/${boardId}`)
-}
+} 

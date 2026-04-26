@@ -1,12 +1,18 @@
-import { Button } from "@/components/ui/button"
+import Link from 'next/link'
+import { Button } from '@/components/ui/button'
 
 export default function Home() {
   return (
-    <main className="flex min-h-screen items-center justify-center bg-slate-50">
-      <div className="text-center space-y-4">
-        <h1 className="text-4xl font-bold tracking-tight">TaskFlow</h1>
-        <p className="text-slate-600">Kanban project management board</p>
-        <Button>Get Started</Button>
+    <main className="min-h-screen bg-slate-50 flex items-center justify-center">
+      <div className="text-center">
+        <h1 className="text-4xl font-bold">TaskFlow</h1>
+        <p className="mt-4 text-slate-600">
+          Kanban project management board
+        </p>
+
+        <Button asChild className="mt-6">
+          <Link href="/login">Get Started</Link>
+        </Button>
       </div>
     </main>
   )

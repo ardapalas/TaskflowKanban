@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useSyncExternalStore } from 'react'
+import { FormEvent, useState, useSyncExternalStore } from 'react'
 import {
   DndContext,
   DragEndEvent,
@@ -42,9 +42,11 @@ type BoardClientProps = {
 function SortableCard({
   card,
   boardId,
+  onDeleteCard,
 }: {
   card: Card
   boardId: string
+  onDeleteCard: (cardId: string, event: FormEvent<HTMLFormElement>) => void
 }) {
   const {
     attributes,
@@ -121,7 +123,10 @@ function SortableCard({
         </button>
       </form>
 
-      <form action={deleteCard} className="mt-2">
+      <form
+        onSubmit={(event) => onDeleteCard(card.id, event)}
+        className="mt-2"
+      >
         <input type="hidden" name="cardId" value={card.id} />
         <input type="hidden" name="boardId" value={boardId} />
 
@@ -139,9 +144,13 @@ function SortableCard({
 function DroppableColumn({
   column,
   boardId,
+  onCreateCard,
+  onDeleteCard,
 }: {
   column: Column
   boardId: string
+  onCreateCard: (columnId: string, event: FormEvent<HTMLFormElement>) => void
+  onDeleteCard: (cardId: string, event: FormEvent<HTMLFormElement>) => void
 }) {
   const { setNodeRef, isOver } = useDroppable({
     id: column.id,
@@ -174,7 +183,12 @@ function DroppableColumn({
         <div className="min-h-24 space-y-3 rounded-xl">
           {column.cards.length > 0 ? (
             column.cards.map((card) => (
-              <SortableCard key={card.id} card={card} boardId={boardId} />
+              <SortableCard
+                key={card.id}
+                card={card}
+                boardId={boardId}
+                onDeleteCard={onDeleteCard}
+              />
             ))
           ) : (
             <div className="rounded-xl border border-dashed p-4 text-sm text-slate-500">
@@ -184,7 +198,10 @@ function DroppableColumn({
         </div>
       </SortableContext>
 
-      <form action={createCard} className="mt-4 space-y-2">
+      <form
+        onSubmit={(event) => onCreateCard(column.id, event)}
+        className="mt-4 space-y-2"
+      >
         <input type="hidden" name="columnId" value={column.id} />
         <input type="hidden" name="boardId" value={boardId} />
 
@@ -234,12 +251,10 @@ export function BoardClient({
   const [columns, setColumns] = useState(initialColumns)
 
   const mounted = useSyncExternalStore(
-  subscribe,
-  getSnapshot,
-  getServerSnapshot
-)
-
-
+    subscribe,
+    getSnapshot,
+    getServerSnapshot
+  )
   const sensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: {
@@ -254,7 +269,7 @@ export function BoardClient({
     })
   )
 
-    if (!mounted) {
+  if (!mounted) {
     return (
       <main className="min-h-screen bg-slate-50">
         <header className="border-b bg-white">
@@ -308,6 +323,146 @@ export function BoardClient({
         </div>
       </main>
     )
+  }
+
+  async function handleCreateCard(
+    columnId: string,
+    event: FormEvent<HTMLFormElement>
+  ) {
+    event.preventDefault()
+
+    const form = event.currentTarget
+    const formData = new FormData(form)
+    const title = formData.get('title')?.toString().trim()
+    const description = formData.get('description')?.toString().trim() ?? ''
+
+    if (!title) {
+      return
+    }
+
+    const targetColumn = columns.find((column) => column.id === columnId)
+    const position = targetColumn?.cards.length ?? 0
+    const tempId = `temp-${crypto.randomUUID()}`
+
+    const optimisticCard: Card = {
+      id: tempId,
+      title,
+      description: description || null,
+      position,
+    }
+
+    setColumns((currentColumns) =>
+      currentColumns.map((column) =>
+        column.id === columnId
+          ? {
+              ...column,
+              cards: [...column.cards, optimisticCard],
+            }
+          : column
+      )
+    )
+
+    form.reset()
+
+    try {
+      const createdCard = await createCard(formData)
+
+      if (!createdCard) {
+        throw new Error('Card could not be created')
+      }
+
+      setColumns((currentColumns) =>
+        currentColumns.map((column) =>
+          column.id === columnId
+            ? {
+                ...column,
+                cards: column.cards.map((card) =>
+                  card.id === tempId
+                    ? {
+                        id: createdCard.id,
+                        title: createdCard.title,
+                        description: createdCard.description,
+                        position: createdCard.position,
+                      }
+                    : card
+                ),
+              }
+            : column
+        )
+      )
+    } catch (error) {
+      console.error('Create card failed:', error)
+
+      setColumns((currentColumns) =>
+        currentColumns.map((column) =>
+          column.id === columnId
+            ? {
+                ...column,
+                cards: column.cards.filter((card) => card.id !== tempId),
+              }
+            : column
+        )
+      )
+    }
+  }
+
+  async function handleDeleteCard(
+    cardId: string,
+    event: FormEvent<HTMLFormElement>
+  ) {
+    event.preventDefault()
+
+    const form = event.currentTarget
+    const formData = new FormData(form)
+
+    let removedCard: Card | null = null
+    let removedColumnId: string | null = null
+    let removedIndex = -1
+
+    setColumns((currentColumns) =>
+      currentColumns.map((column) => {
+        const cardIndex = column.cards.findIndex((card) => card.id === cardId)
+
+        if (cardIndex === -1) {
+          return column
+        }
+
+        removedCard = column.cards[cardIndex]
+        removedColumnId = column.id
+        removedIndex = cardIndex
+
+        return {
+          ...column,
+          cards: column.cards.filter((card) => card.id !== cardId),
+        }
+      })
+    )
+
+    try {
+      await deleteCard(formData)
+    } catch (error) {
+      console.error('Delete card failed:', error)
+
+      if (!removedCard || !removedColumnId) {
+        return
+      }
+
+      setColumns((currentColumns) =>
+        currentColumns.map((column) => {
+          if (column.id !== removedColumnId) {
+            return column
+          }
+
+          const restoredCards = [...column.cards]
+          restoredCards.splice(removedIndex, 0, removedCard as Card)
+
+          return {
+            ...column,
+            cards: restoredCards,
+          }
+        })
+      )
+    }
   }
 
   async function handleDragEnd(event: DragEndEvent) {
@@ -455,6 +610,8 @@ export function BoardClient({
                   key={column.id}
                   column={column}
                   boardId={boardId}
+                  onCreateCard={handleCreateCard}
+                  onDeleteCard={handleDeleteCard}
                 />
               ))}
             </div>
