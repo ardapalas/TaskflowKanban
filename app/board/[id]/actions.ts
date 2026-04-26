@@ -56,6 +56,10 @@ export async function createCard(formData: FormData) {
   return card;
 }
 
+export async function createCardFallback(formData: FormData) {
+  await createCard(formData);
+}
+
 export async function deleteCard(formData: FormData) {
   const supabase = await createClient();
 
@@ -89,6 +93,10 @@ export async function deleteCard(formData: FormData) {
   revalidatePath(`/board/${boardId}`);
 
   return deletedCard;
+}
+
+export async function deleteCardFallback(formData: FormData) {
+  await deleteCard(formData);
 }
 
 export async function updateCard(formData: FormData) {
