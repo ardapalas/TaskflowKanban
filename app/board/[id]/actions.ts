@@ -198,5 +198,153 @@ export async function moveCard(input: MoveCardInput) {
     throw new Error(failedUpdate.error.message)
   }
 
+  if (sourceColumnId !== targetColumnId) {
+    const [{ data: fromCol }, { data: toCol }] = await Promise.all([
+      supabase.from('columns').select('title').eq('id', sourceColumnId).single(),
+      supabase.from('columns').select('title').eq('id', targetColumnId).single(),
+    ])
+
+    const { error: activityError } = await supabase.from('card_activities').insert({
+      card_id: cardId,
+      from_column_id: sourceColumnId,
+      to_column_id: targetColumnId,
+      from_column_title: fromCol?.title ?? null,
+      to_column_title: toCol?.title ?? null,
+    })
+
+    if (activityError) {
+      console.error('Activity log error:', JSON.stringify(activityError))
+    }
+  }
+
   revalidatePath(`/board/${boardId}`)
-} 
+}
+
+export async function createColumn(formData: FormData) {
+  const supabase = await createClient()
+
+  const boardId = formData.get('boardId')?.toString()
+  const title = formData.get('title')?.toString().trim()
+
+  if (!boardId || !title) {
+    return
+  }
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+
+  if (!user) {
+    redirect('/login')
+  }
+
+  const { count } = await supabase
+    .from('columns')
+    .select('id', { count: 'exact', head: true })
+    .eq('board_id', boardId)
+
+  const { data: column, error } = await supabase
+    .from('columns')
+    .insert({ board_id: boardId, title, position: count ?? 0 })
+    .select('id, title, position')
+    .single()
+
+  if (error || !column) {
+    console.error('Create column error:', error)
+    throw new Error(error?.message ?? 'Column could not be created')
+  }
+
+  revalidatePath(`/board/${boardId}`)
+  return column
+}
+
+export async function updateColumn(formData: FormData) {
+  const supabase = await createClient()
+
+  const columnId = formData.get('columnId')?.toString()
+  const boardId = formData.get('boardId')?.toString()
+  const title = formData.get('title')?.toString().trim()
+
+  if (!columnId || !boardId || !title) {
+    return
+  }
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+
+  if (!user) {
+    redirect('/login')
+  }
+
+  const { error } = await supabase
+    .from('columns')
+    .update({ title })
+    .eq('id', columnId)
+
+  if (error) {
+    console.error('Update column error:', error)
+    throw new Error(error.message)
+  }
+
+  revalidatePath(`/board/${boardId}`)
+}
+
+export async function deleteColumn(formData: FormData) {
+  const supabase = await createClient()
+
+  const columnId = formData.get('columnId')?.toString()
+  const boardId = formData.get('boardId')?.toString()
+
+  if (!columnId || !boardId) {
+    return
+  }
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+
+  if (!user) {
+    redirect('/login')
+  }
+
+  const { error } = await supabase
+    .from('columns')
+    .delete()
+    .eq('id', columnId)
+
+  if (error) {
+    console.error('Delete column error:', error)
+    throw new Error(error.message)
+  }
+
+  revalidatePath(`/board/${boardId}`)
+}
+
+export type Activity = {
+  id: string
+  from_column_title: string | null
+  to_column_title: string | null
+  moved_at: string
+}
+
+export async function getCardActivities(cardId: string): Promise<Activity[]> {
+  const supabase = await createClient()
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+
+  if (!user) {
+    return []
+  }
+
+  const { data } = await supabase
+    .from('card_activities')
+    .select('id, from_column_title, to_column_title, moved_at')
+    .eq('card_id', cardId)
+    .order('moved_at', { ascending: false })
+    .limit(5)
+
+  return (data ?? []) as Activity[]
+}
