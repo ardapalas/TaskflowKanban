@@ -5,6 +5,7 @@ import {
   DndContext,
   DragEndEvent,
   DragOverlay,
+  DragOverEvent,
   DragStartEvent,
   PointerSensor,
   closestCorners,
@@ -277,6 +278,7 @@ function DroppableColumn({
   boardId,
   allColumns,
   activeDragSourceColumnId,
+  activeDragOverColumnId,
   onCreateCard,
   onDeleteCard,
   onUpdateCard,
@@ -288,6 +290,7 @@ function DroppableColumn({
   boardId: string
   allColumns: { id: string; title: string }[]
   activeDragSourceColumnId: string | null
+  activeDragOverColumnId: string | null
   onCreateCard: (columnId: string, event: FormEvent<HTMLFormElement>) => void
   onDeleteCard: (cardId: string, event: FormEvent<HTMLFormElement>) => void
   onUpdateCard: (cardId: string, event: FormEvent<HTMLFormElement>) => void
@@ -305,7 +308,8 @@ function DroppableColumn({
   })
 
   const isSource = column.id === activeDragSourceColumnId
-  const isTarget = isOver && !isSource
+  const isTarget =
+    (isOver || activeDragOverColumnId === column.id) && !isSource
 
   function commitTitleEdit() {
     const trimmed = editTitle.trim()
@@ -482,6 +486,7 @@ export function BoardClient({
 }: BoardClientProps) {
   const [columns, setColumns] = useState(initialColumns)
   const [activeDragSourceColumnId, setActiveDragSourceColumnId] = useState<string | null>(null)
+  const [activeDragOverColumnId, setActiveDragOverColumnId] = useState<string | null>(null)
   const [activeDragCard, setActiveDragCard] = useState<Card | null>(null)
   const [showAddColumn, setShowAddColumn] = useState(false)
 
@@ -499,19 +504,43 @@ export function BoardClient({
       const found = column.cards.find((card) => card.id === activeCardId)
       if (found) {
         setActiveDragSourceColumnId(column.id)
+        setActiveDragOverColumnId(null)
         setActiveDragCard(found)
         return
       }
     }
   }
 
+  function handleDragOver(event: DragOverEvent) {
+    const over = event.over
+
+    if (!over) {
+      setActiveDragOverColumnId(null)
+      return
+    }
+
+    if (over.data.current?.type === 'column') {
+      setActiveDragOverColumnId(over.data.current?.columnId ?? null)
+      return
+    }
+
+    const overId = over.id.toString()
+    const targetColumn = columns.find((column) =>
+      column.cards.some((card) => card.id === overId)
+    )
+
+    setActiveDragOverColumnId(targetColumn?.id ?? null)
+  }
+
   function handleDragCancel() {
     setActiveDragSourceColumnId(null)
+    setActiveDragOverColumnId(null)
     setActiveDragCard(null)
   }
 
   async function handleDragEnd(event: DragEndEvent) {
     setActiveDragSourceColumnId(null)
+    setActiveDragOverColumnId(null)
     setActiveDragCard(null)
 
     const { active, over } = event
@@ -935,6 +964,7 @@ export function BoardClient({
         sensors={sensors}
         collisionDetection={closestCorners}
         onDragStart={handleDragStart}
+        onDragOver={handleDragOver}
         onDragEnd={handleDragEnd}
         onDragCancel={handleDragCancel}
       >
@@ -958,6 +988,7 @@ export function BoardClient({
                   boardId={boardId}
                   allColumns={columns.map((c) => ({ id: c.id, title: c.title }))}
                   activeDragSourceColumnId={activeDragSourceColumnId}
+                  activeDragOverColumnId={activeDragOverColumnId}
                   onCreateCard={handleCreateCard}
                   onDeleteCard={handleDeleteCard}
                   onUpdateCard={handleUpdateCard}
