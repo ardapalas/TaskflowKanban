@@ -2,7 +2,7 @@
 
 TaskFlow is a responsive Kanban project management board built with Next.js, Supabase, and dnd-kit.
 
-The project focuses on the core Kanban experience: authenticated users can create boards, manage columns and cards, edit tasks, and move cards with drag-and-drop while preserving order after refresh.
+The project focuses on the core Kanban experience: authenticated users can create boards, manage cards, move tasks between columns, and preserve the exact card order after refreshing the page.
 
 Live Demo: https://taskflow-kanban-ardapalas.vercel.app  
 Repository: https://github.com/ardapalas/TaskflowKanban
@@ -19,13 +19,23 @@ Repository: https://github.com/ardapalas/TaskflowKanban
   - To Do
   - In Progress
   - Done
-- Column CRUD
 - Card creation, inline editing, and deletion
 - Drag-and-drop cards within the same column
 - Drag-and-drop cards across columns
-- Mobile-friendly card movement support
 - Persistent card ordering after page refresh
-- Activity history for card movements
+- Visual drag feedback:
+  - dragged card animation
+  - highlighted source/target areas
+  - color feedback while moving cards
+- Mobile-friendly interface
+- Mobile fallback move button:
+  - users can tap a move button
+  - select the target column
+  - move a card even if drag-and-drop is inconvenient on a touch device
+- Activity history for card movements:
+  - move time
+  - source column
+  - target column
 - Responsive UI for desktop and mobile
 - Supabase Row Level Security policies
 - Vercel deployment
@@ -95,7 +105,7 @@ profiles
               └── cards
 ```
 
-### Tables
+### Core Tables
 
 ```sql
 profiles (
@@ -143,6 +153,41 @@ When a card is moved to another column, both the card's `column_id` and the affe
 
 ---
 
+## Activity History Model
+
+TaskFlow includes activity history for card movements.
+
+The current activity history focuses on the most important Kanban audit information:
+
+- when the card was moved
+- from which column it was moved
+- to which column it was moved
+
+This keeps the activity log focused and useful without expanding the 48-hour scope too much.
+
+A simplified activity history model can look like this:
+
+```sql
+activity_logs (
+  id uuid primary key default gen_random_uuid(),
+  board_id uuid references boards(id) on delete cascade,
+  card_id uuid references cards(id) on delete cascade,
+  from_column_id uuid references columns(id),
+  to_column_id uuid references columns(id),
+  created_at timestamptz default now()
+);
+```
+
+This is enough to answer questions like:
+
+```txt
+Card moved from "To Do" to "In Progress" at 14:32.
+```
+
+For a larger team-based version, this table could later be expanded with `user_id`, action types, and detailed metadata.
+
+---
+
 ## Security Model
 
 The application uses Supabase Row Level Security.
@@ -169,6 +214,8 @@ EXISTS (
 )
 ```
 
+This approach keeps the data model secure while still allowing nested resources like columns and cards.
+
 ---
 
 ## Drag-and-Drop Library Decision
@@ -184,7 +231,40 @@ I compared four options:
 | SortableJS | Mature, fast, framework-agnostic | DOM-oriented approach feels less natural with React state and Server Actions |
 | Native HTML5 Drag and Drop | No extra dependency, small bundle impact | Weak mobile/touch support, inconsistent browser behavior, harder custom UX |
 
-I chose **dnd-kit** because this project explicitly needed a modern, mobile-friendly drag-and-drop experience. Native drag-and-drop is risky on touch devices, while dnd-kit gives better control over sensors, collision detection, sortable lists, and custom drag handles.
+I chose **dnd-kit** because this project explicitly needed a modern, mobile-friendly drag-and-drop experience.
+
+Native browser drag-and-drop has weak touch support and inconsistent browser behavior.  
+`react-beautiful-dnd` is no longer the safest long-term choice because its maintenance status is limited.  
+`@hello-pangea/dnd` is a good fork, but it still follows the older react-beautiful-dnd API style.  
+`SortableJS` is powerful, but its DOM-oriented approach is less natural for this React + Server Actions architecture.
+
+dnd-kit provided the best balance of:
+
+- mobile support
+- active ecosystem
+- flexible sensors
+- custom drag handles
+- collision detection
+- modern React compatibility
+
+---
+
+## Drag-and-Drop UX
+
+The app gives visual feedback during drag-and-drop.
+
+Examples:
+
+- the dragged card visually changes while moving
+- source and target areas are highlighted
+- the target column gives clear feedback
+- the moved-from and moved-to areas use visual color cues
+- cards animate into their new position
+
+These details make the interaction easier to understand, especially when moving cards across columns.
+
+The database is not updated continuously while dragging.  
+Instead, the UI updates locally during interaction and the final order is saved when the drag action ends.
 
 ---
 
@@ -201,11 +281,12 @@ position
 
 When a card is moved:
 
-1. The card's target column is detected.
-2. The card is inserted into the new position in local state.
-3. The affected cards are re-indexed.
-4. The new `column_id` and `position` values are saved to Supabase.
-5. On refresh, cards are queried with `order('position')`.
+1. The card's source column is detected.
+2. The target column is detected.
+3. The card is inserted into the new position in local state.
+4. The affected cards are re-indexed.
+5. The new `column_id` and `position` values are saved to Supabase.
+6. On refresh, cards are queried with `order('position')`.
 
 For this 48-hour project, I used integer-based ordering:
 
@@ -221,7 +302,8 @@ For larger boards, a more scalable future approach would be fractional ordering:
 10, 20, 30
 ```
 
-If a card is inserted between 10 and 20, it can receive position 15. That would reduce how often the whole column needs to be re-indexed.
+If a card is inserted between 10 and 20, it can receive position 15.  
+That would reduce how often the whole column needs to be re-indexed.
 
 ---
 
@@ -234,13 +316,24 @@ On smaller screens, columns are stacked vertically instead of being forced into 
 Mobile-specific choices:
 
 - dnd-kit touch support
-- Touch-friendly drag handle
-- Mobile move alternative for better usability
-- Larger tap targets for card actions
-- Responsive column layout
-- Avoid relying only on desktop mouse behavior
+- touch-friendly drag handle
+- larger tap targets
+- responsive column layout
+- mobile-specific move button
+- fallback movement flow for touch devices
 
-The goal was not to build a native mobile app, but to make the web interface usable on mobile browsers.
+The app includes a dedicated mobile move mechanism.  
+If drag-and-drop is inconvenient on a phone, the user can tap the move button and select the target column manually.
+
+This is useful because mobile drag-and-drop can be affected by:
+
+- browser scrolling behavior
+- touch delay
+- small screen size
+- accidental taps
+- device-specific differences
+
+The goal was not to build a native mobile app, but to make the web interface reliable and usable on mobile browsers.
 
 ---
 
@@ -257,6 +350,15 @@ So the data model supports column ordering.
 In this version, I prioritized card drag-and-drop because it is the core Kanban behavior.
 
 Column reordering is a good next iteration and can be implemented with another `SortableContext` around the columns.
+
+This was intentionally deferred because the 48-hour scope was better spent on:
+
+- reliable card drag-and-drop
+- cross-column movement
+- persistent ordering
+- mobile usability
+- RLS security
+- deployment stability
 
 ---
 
@@ -282,13 +384,17 @@ That means drag-and-drop, persistence, mobile usability, authentication, and dat
 
 ---
 
-## Board Sharing
+## Future Improvement: Board Sharing
+
+Board sharing is not implemented in the current version.
 
 The current version uses single-user board ownership:
 
 ```txt
 boards.user_id = auth.uid()
 ```
+
+This keeps the MVP secure and simple: each authenticated user can only access their own boards through Supabase RLS policies.
 
 A future sharing model could use a `board_members` table:
 
@@ -308,33 +414,12 @@ Possible roles:
 
 RLS policies would then check both ownership and membership.
 
----
+This would allow two possible collaboration modes:
 
-## Activity History
+1. View-only sharing
+2. Collaborative editing
 
-Activity history is valuable for project management because users may want to know:
-
-- when a card was moved
-- who moved it
-- from which column to which column it moved
-- when a card was created, updated, or deleted
-
-This project includes activity history for important board actions.
-
-A typical activity log model is:
-
-```sql
-activity_logs (
-  id uuid primary key default gen_random_uuid(),
-  board_id uuid references boards(id) on delete cascade,
-  card_id uuid references cards(id) on delete cascade,
-  user_id uuid references profiles(id),
-  action text,
-  from_column_id uuid,
-  to_column_id uuid,
-  created_at timestamptz default now()
-);
-```
+For a production version, I would implement view-only sharing first because it is safer and simpler. Collaborative editing would require more careful conflict handling, realtime updates, and activity tracking.
 
 ---
 
@@ -371,12 +456,17 @@ The main goal was to build a complete and reliable Kanban MVP rather than many u
 Completed core scope:
 
 - Authentication
-- Board management
-- Column management
-- Card creation/editing/deletion
-- Drag-and-drop
-- Cross-column card movement
+- Board creation and deletion
+- Default Kanban columns
+- Card creation
+- Card editing
+- Card deletion
+- Same-column drag-and-drop
+- Cross-column drag-and-drop
+- Visual drag feedback
+- Mobile move fallback
 - Persistent ordering
+- Basic movement activity history
 - Mobile usability
 - Supabase RLS security
 - Vercel deployment
@@ -390,6 +480,9 @@ Deferred future scope:
 - Assignees
 - Advanced filtering/search
 - Realtime collaboration
+- More detailed activity logs
+
+The main trade-off was intentional: I focused on making the core Kanban interaction solid instead of adding many secondary features with incomplete behavior.
 
 ---
 
@@ -497,7 +590,9 @@ A reviewer can test the app with this flow:
 8. Move a card within the same column.
 9. Move a card to another column.
 10. Refresh the page and confirm the order is preserved.
-11. Test the same flow on mobile.
+11. Check the movement activity history.
+12. Test the same flow on mobile.
+13. On mobile, try both drag-and-drop and the move button.
 
 ---
 
