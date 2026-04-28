@@ -62,3 +62,31 @@ export async function createBoard(formData: FormData) {
   revalidatePath("/dashboard");
   redirect(`/board/${board.id}`);
 }
+
+export async function deleteBoard(formData: FormData) {
+  const supabase = await createClient();
+
+  const boardId = formData.get("boardId")?.toString();
+  if (!boardId) return;
+
+  const {
+    data: { user },
+    error: userError,
+  } = await supabase.auth.getUser();
+
+  if (userError || !user) {
+    redirect("/login");
+  }
+
+  const { error } = await supabase
+    .from("boards")
+    .delete()
+    .eq("id", boardId);
+
+  if (error) {
+    console.error("Delete board error:", error);
+    throw new Error(error.message);
+  }
+
+  revalidatePath("/dashboard");
+}

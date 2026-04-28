@@ -133,10 +133,10 @@ function SortableCard({
     >
       <div className="mb-3 flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <h3 className="font-medium">{card.title}</h3>
+          <h3 className="font-medium break-words">{card.title}</h3>
 
           {card.description ? (
-            <p className="mt-1 text-sm text-slate-600">{card.description}</p>
+            <p className="mt-1 text-sm text-slate-600 break-words">{card.description}</p>
           ) : null}
         </div>
 
@@ -942,9 +942,9 @@ export function BoardClient({
           <DragOverlay dropAnimation={{ duration: 150, easing: 'ease' }}>
             {activeDragCard ? (
               <div className="w-72 rounded-xl border bg-slate-50 p-3 shadow-2xl rotate-2 opacity-95">
-                <h3 className="font-medium">{activeDragCard.title}</h3>
+                <h3 className="font-medium break-words">{activeDragCard.title}</h3>
                 {activeDragCard.description ? (
-                  <p className="mt-1 text-sm text-slate-600">{activeDragCard.description}</p>
+                  <p className="mt-1 text-sm text-slate-600 break-words">{activeDragCard.description}</p>
                 ) : null}
               </div>
             ) : null}
