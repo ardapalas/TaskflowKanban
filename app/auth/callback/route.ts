@@ -19,6 +19,8 @@ export async function GET(request: Request) {
   const tokenHash = searchParams.get('token_hash')
   const type = searchParams.get('type')
   const next = searchParams.get('next') ?? '/dashboard'
+  const errorCode = searchParams.get('error_code')
+  const errorDescription = searchParams.get('error_description')
   const supabase = await createClient()
 
   if (code) {
@@ -27,6 +29,8 @@ export async function GET(request: Request) {
     if (!error) {
       return NextResponse.redirect(`${origin}${next}`)
     }
+
+    return NextResponse.redirect(`${origin}/login?success=email-confirmed`)
   }
 
   if (tokenHash && isEmailOtpType(type)) {
@@ -38,6 +42,13 @@ export async function GET(request: Request) {
     if (!error) {
       return NextResponse.redirect(`${origin}${next}`)
     }
+  }
+
+  if (errorCode || errorDescription) {
+    const message = errorDescription ?? errorCode ?? 'auth-callback-failed'
+    return NextResponse.redirect(
+      `${origin}/login?error=${encodeURIComponent(message)}`
+    )
   }
 
   // Hata durumu — login sayfasına yönlendir

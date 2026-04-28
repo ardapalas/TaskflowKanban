@@ -13,11 +13,11 @@ import {
 import { login } from './actions'
 
 type Props = {
-  searchParams: Promise<{ error?: string }>
+  searchParams: Promise<{ error?: string; success?: string }>
 }
 
 export default async function LoginPage({ searchParams }: Props) {
-  const { error } = await searchParams
+  const { error, success } = await searchParams
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-slate-50 p-4">
@@ -55,6 +55,12 @@ export default async function LoginPage({ searchParams }: Props) {
 
             {error && (
               <p className="text-sm text-red-600">{error}</p>
+            )}
+
+            {success === 'email-confirmed' && (
+              <p className="text-sm text-green-600">
+                Email confirmed. You can sign in now.
+              </p>
             )}
           </CardContent>
 
